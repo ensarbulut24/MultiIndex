@@ -1,4 +1,3 @@
-/* Minimal JSON parser for Assignment -2.json */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +16,7 @@ static int jparse_str(char *out, int maxlen){
     while(*jp && *jp != '"'){
         if(*jp == '\\'){
             jp++;
-            if(*jp == 'u'){ /* unicode escape - copy as-is */
+            if(*jp == 'u'){
                 if(i<maxlen-1) out[i++] = '\\';
                 if(i<maxlen-1) out[i++] = 'u';
                 jp++;
@@ -64,7 +63,7 @@ static void jskip_val(void){
 }
 
 static int jfind_key(const char *key){
-    /* Find key in current object level. Assumes jp is inside an object after '{' */
+
     while(*jp && *jp != '}'){
         jskip_ws();
         if(*jp != '"') { jp++; continue; }
@@ -89,7 +88,7 @@ static char* jload_file(const char *path){
     fread(buf,1,sz,f); buf[sz]=0; fclose(f);
     return buf;
 }
-/* === DATA STRUCTURES === */
+
 #define MAXC 64
 #define MAXPID 32
 #define MAXN 64
@@ -131,7 +130,6 @@ static int icmp(const char *a,const char *b){
     while(*a&&*b){int ca=tolower((unsigned char)*a),cb=tolower((unsigned char)*b);
     if(ca!=cb)return ca-cb;a++;b++;}return(unsigned char)*a-(unsigned char)*b;}
 
-/* === JSON-BASED DATA LOADER === */
 static int load_json(Idx *ix){
     json_buf=jload_file(JSONFILE);
     if(!json_buf)return 0;
@@ -141,29 +139,29 @@ static int load_json(Idx *ix){
     ix->nco=ix->nci=ix->npr=ix->nrec=0;
     jskip_ws();
     if(*jp!='['){fclose(df);free(json_buf);return 0;}
-    jp++; /* skip [ */
+    jp++;
     while(*jp&&*jp!=']'){
         jskip_ws(); if(*jp==','){jp++;jskip_ws();}
         if(*jp!='{')break;
-        jp++; /* enter country obj */
+        jp++;
         char cname[MAXC]="",ccode[8]="";
         char *saved=jp;
         if(jfind_key("country"))jparse_str(cname,MAXC);
         jp=saved;
         if(jfind_key("country_code"))jparse_str(ccode,8);
         jp=saved;
-        /* find cities array */
+
         if(!jfind_key("cities")){jskip_val();jskip_ws();if(*jp=='}')jp++;continue;}
         jskip_ws();
         if(*jp!='['){jskip_val();jskip_ws();if(*jp=='}')jp++;continue;}
-        jp++; /* enter cities array */
+        jp++;
         int coi=-1;
         for(int i=0;i<ix->nco;i++)if(icmp(ix->co[i].name,cname)==0){coi=i;break;}
         if(coi<0){coi=ix->nco++;scpy(ix->co[coi].name,cname,MAXC);ix->co[coi].fcity=SENTINEL;}
         while(*jp&&*jp!=']'){
             jskip_ws();if(*jp==','){jp++;jskip_ws();}
             if(*jp!='{')break;
-            jp++; /* enter city obj */
+            jp++;
             char cityname[MAXC]="";
             char *csaved=jp;
             if(jfind_key("city_name"))jparse_str(cityname,MAXC);
@@ -180,19 +178,19 @@ static int load_json(Idx *ix){
                 cii=ix->nci++;scpy(ix->ci[cii].name,cityname,MAXC);
                 ix->ci[cii].fprod=SENTINEL;ix->ci[cii].next=ix->co[coi].fcity;ix->co[coi].fcity=cii;
             }
-            /* find products array */
+
             if(!jfind_key("products")){
-                /* skip rest of city */
+
                 int d=1;while(*jp&&d>0){if(*jp=='{')d++;else if(*jp=='}')d--;jp++;}
                 continue;
             }
             jskip_ws();
             if(*jp!='['){jskip_val();int d=1;while(*jp&&d>0){if(*jp=='{')d++;else if(*jp=='}')d--;jp++;}continue;}
-            jp++; /* enter products array */
+            jp++;
             while(*jp&&*jp!=']'){
                 jskip_ws();if(*jp==','){jp++;jskip_ws();}
                 if(*jp!='{')break;
-                jp++; /* enter product obj */
+                jp++;
                 Record r;memset(&r,0,sizeof(r));
                 scpy(r.country,cname,MAXC);scpy(r.ccode,ccode,8);scpy(r.city,cityname,MAXC);
                 char *psaved=jp;
@@ -234,7 +232,7 @@ static int load_json(Idx *ix){
                 jp=psaved;
                 if(jfind_key("extra")){jskip_ws();
                 if(strncmp(jp,"null",4)==0)jp+=4;else jparse_str(r.extra,MAXEXT);}
-                /* skip to end of product obj */
+
                 while(*jp&&*jp!='}')jp++;if(*jp=='}')jp++;
                 long off=(long)ftell(df);
                 fwrite(&r,sizeof(Record),1,df);
@@ -244,13 +242,13 @@ static int load_json(Idx *ix){
                 ix->nrec++;
                 jskip_ws();if(*jp==',')jp++;
             }
-            if(*jp==']')jp++; /* end products */
+            if(*jp==']')jp++;
             jskip_ws();
-            /* skip to end of city obj */
+
             while(*jp&&*jp!='}')jp++;if(*jp=='}')jp++;
             jskip_ws();if(*jp==',')jp++;
         }
-        if(*jp==']')jp++; /* end cities */
+        if(*jp==']')jp++;
         jskip_ws();
         while(*jp&&*jp!='}')jp++;if(*jp=='}')jp++;
         jskip_ws();if(*jp==',')jp++;
@@ -259,45 +257,33 @@ static int load_json(Idx *ix){
     return 1;
 }
 
-/* === SORTING via Replacement Selection Sort === */
-
-/*
- * replacement_selection_sort_countries:
- * Physically sorts the CountryIdx array using Replacement Selection Sort.
- * Uses a min-heap of size HEAP_SZ as the internal buffer.
- * Produces sorted runs, then merges them into the final sorted order.
- */
 static void sort_countries(Idx *ix){
     int n = ix->nco;
     if(n <= 1) return;
 
-    /* Copy country names into an input array */
     CountryIdx inp[MAXCOUNTRIES];
     for(int i = 0; i < n; i++) inp[i] = ix->co[i];
 
-    /* Output buffer to collect sorted runs */
-    CountryIdx out[MAXCOUNTRIES];
-    int out_pos = 0;
+    CountryIdx buf[MAXCOUNTRIES];
+    int buf_pos = 0;
+    int rstart[MAXCOUNTRIES+1];
+    int nruns = 0;
+    rstart[0] = 0; nruns = 1;
 
     int hs = HEAP_SZ;
     if(hs > n) hs = n;
 
-    /* Min-heap buffer */
     CountryIdx heap[HEAP_SZ];
     int dead[HEAP_SZ];
     int hsz = 0, ipos = 0;
     memset(dead, 0, sizeof(dead));
 
-    /* Fill heap from input */
     for(int i = 0; i < hs && ipos < n; i++){
         heap[i] = inp[ipos++];
         hsz++;
     }
 
-    /* Heap comparison: alive items come before dead; among same status, compare by name */
     #define CO_CMP(a,b) (dead[a]!=dead[b] ? dead[a]-dead[b] : icmp(heap[a].name, heap[b].name))
-
-    /* Sift-down for min-heap */
     #define CO_SIFT_DOWN(start, size) { \
         int _p = (start); \
         while(1){ \
@@ -311,32 +297,23 @@ static void sort_countries(Idx *ix){
         } \
     }
 
-    /* Build initial min-heap */
     for(int i = hsz/2-1; i >= 0; i--){ CO_SIFT_DOWN(i, hsz); }
 
     char last_name[MAXC] = "";
     int alive = hsz;
 
     while(hsz > 0){
-        /* If all heap entries are dead, start new run */
-        if(alive == 0){
-            for(int i = 0; i < hsz; i++) dead[i] = 0;
-            alive = hsz;
-            last_name[0] = 0;
-            for(int i = hsz/2-1; i >= 0; i--){ CO_SIFT_DOWN(i, hsz); }
-        }
-        if(dead[0]){
+        if(alive == 0 || dead[0]){
+            rstart[nruns++] = buf_pos;
             for(int i = 0; i < hsz; i++) dead[i] = 0;
             alive = hsz;
             last_name[0] = 0;
             for(int i = hsz/2-1; i >= 0; i--){ CO_SIFT_DOWN(i, hsz); }
         }
 
-        /* Output minimum alive element */
-        out[out_pos++] = heap[0];
+        buf[buf_pos++] = heap[0];
         scpy(last_name, heap[0].name, MAXC);
 
-        /* Replace with next input or shrink heap */
         if(ipos < n){
             heap[0] = inp[ipos++];
             dead[0] = 0;
@@ -353,28 +330,181 @@ static void sort_countries(Idx *ix){
         }
         CO_SIFT_DOWN(0, hsz);
     }
-
-    /* Copy sorted output back to index */
-    for(int i = 0; i < n; i++) ix->co[i] = out[i];
+    rstart[nruns] = buf_pos;
 
     #undef CO_CMP
     #undef CO_SIFT_DOWN
+
+    if(nruns == 1){
+        for(int i = 0; i < n; i++) ix->co[i] = buf[i];
+        return;
+    }
+
+    CountryIdx merged[MAXCOUNTRIES];
+    int mpos = 0;
+    int mheap_run[MAXCOUNTRIES];
+    int cur_pos[MAXCOUNTRIES];
+    int mhsz = 0;
+
+    for(int r = 0; r < nruns; r++){
+        cur_pos[r] = rstart[r];
+        if(rstart[r] < rstart[r+1]) mheap_run[mhsz++] = r;
+    }
+
+    #define MG_CMP(a,b) icmp(buf[cur_pos[mheap_run[a]]].name, buf[cur_pos[mheap_run[b]]].name)
+    #define MG_SIFT(p,sz) { \
+        int _p=(p); \
+        while(1){ \
+            int _s=_p,_l=2*_p+1,_r=2*_p+2; \
+            if(_l<(sz)&&MG_CMP(_l,_s)<0)_s=_l; \
+            if(_r<(sz)&&MG_CMP(_r,_s)<0)_s=_r; \
+            if(_s==_p)break; \
+            int _t=mheap_run[_p];mheap_run[_p]=mheap_run[_s];mheap_run[_s]=_t; \
+            _p=_s; \
+        } \
+    }
+
+    for(int i = mhsz/2-1; i >= 0; i--){ MG_SIFT(i, mhsz); }
+
+    while(mhsz > 0){
+        int r = mheap_run[0];
+        merged[mpos++] = buf[cur_pos[r]++];
+        if(cur_pos[r] < rstart[r+1]){
+            MG_SIFT(0, mhsz);
+        } else {
+            mhsz--;
+            if(mhsz > 0){ mheap_run[0] = mheap_run[mhsz]; MG_SIFT(0, mhsz); }
+        }
+    }
+
+    #undef MG_CMP
+    #undef MG_SIFT
+
+    for(int i = 0; i < n; i++) ix->co[i] = merged[i];
 }
-static void sort_city_list(Idx *ix,long *head){
-    if(*head==SENTINEL)return;
-    long arr[MAXCITIES];int n=0;long c=*head;
-    while(c!=SENTINEL&&n<MAXCITIES){arr[n++]=c;c=ix->ci[c].next;}
-    for(int i=0;i<n-1;i++)for(int j=0;j<n-1-i;j++)
-        if(icmp(ix->ci[arr[j]].name,ix->ci[arr[j+1]].name)>0){long t=arr[j];arr[j]=arr[j+1];arr[j+1]=t;}
-    *head=arr[0];for(int i=0;i<n-1;i++)ix->ci[arr[i]].next=arr[i+1];ix->ci[arr[n-1]].next=SENTINEL;
+
+static void sort_city_list(Idx *ix, long *head){
+    if(*head==SENTINEL) return;
+    long inp[MAXCITIES]; int n=0;
+    {long c=*head; while(c!=SENTINEL&&n<MAXCITIES){inp[n++]=c; c=ix->ci[c].next;}}
+    if(n<=1) return;
+    long buf[MAXCITIES]; int buf_pos=0;
+    int rstart[MAXCITIES+1]; int nruns=0;
+    rstart[0]=0; nruns=1;
+    int hs=HEAP_SZ; if(hs>n)hs=n;
+    long heap[HEAP_SZ]; int dead[HEAP_SZ]; int hsz=0,ipos=0;
+    memset(dead,0,sizeof(dead));
+    for(int i=0;i<hs&&ipos<n;i++){heap[i]=inp[ipos++];hsz++;}
+    #define CI_CMP(a,b)(dead[a]!=dead[b]?dead[a]-dead[b]:icmp(ix->ci[heap[a]].name,ix->ci[heap[b]].name))
+    #define CI_SIFT(st,sz){int _p=(st);while(1){int _s=_p,_l=2*_p+1,_r=2*_p+2;\
+        if(_l<(sz)&&CI_CMP(_l,_s)<0)_s=_l; if(_r<(sz)&&CI_CMP(_r,_s)<0)_s=_r;\
+        if(_s==_p)break; long _t=heap[_p];heap[_p]=heap[_s];heap[_s]=_t;\
+        int _d=dead[_p];dead[_p]=dead[_s];dead[_s]=_d;_p=_s;}}
+    for(int i=hsz/2-1;i>=0;i--){CI_SIFT(i,hsz);}
+    char last[MAXC]=""; int alive=hsz;
+    while(hsz>0){
+        if(alive==0 || dead[0]){
+            rstart[nruns++]=buf_pos;
+            for(int i=0;i<hsz;i++)dead[i]=0; alive=hsz; last[0]=0;
+            for(int i=hsz/2-1;i>=0;i--){CI_SIFT(i,hsz);}
+        }
+        buf[buf_pos++]=heap[0]; scpy(last,ix->ci[heap[0]].name,MAXC);
+        if(ipos<n){
+            heap[0]=inp[ipos++]; dead[0]=0;
+            if(icmp(ix->ci[heap[0]].name,last)<0){dead[0]=1;alive--;}
+        } else {
+            hsz--; if(hsz>0){heap[0]=heap[hsz];dead[0]=dead[hsz];} else break;
+        }
+        CI_SIFT(0,hsz);
+    }
+    rstart[nruns]=buf_pos;
+    #undef CI_CMP
+    #undef CI_SIFT
+
+    long out[MAXCITIES];
+    if(nruns==1){
+        for(int i=0;i<n;i++) out[i]=buf[i];
+    } else {
+        int mpos=0; int mheap_run[MAXCITIES]; int cur_pos[MAXCITIES]; int mhsz=0;
+        for(int r=0;r<nruns;r++){cur_pos[r]=rstart[r]; if(rstart[r]<rstart[r+1])mheap_run[mhsz++]=r;}
+        #define CMG_CMP(a,b) icmp(ix->ci[buf[cur_pos[mheap_run[a]]]].name, ix->ci[buf[cur_pos[mheap_run[b]]]].name)
+        #define CMG_SIFT(p,sz) {int _p=(p);while(1){int _s=_p,_l=2*_p+1,_r=2*_p+2;\
+            if(_l<(sz)&&CMG_CMP(_l,_s)<0)_s=_l; if(_r<(sz)&&CMG_CMP(_r,_s)<0)_s=_r;\
+            if(_s==_p)break; int _t=mheap_run[_p];mheap_run[_p]=mheap_run[_s];mheap_run[_s]=_t;_p=_s;}}
+        for(int i=mhsz/2-1;i>=0;i--){CMG_SIFT(i,mhsz);}
+        while(mhsz>0){
+            int r=mheap_run[0]; out[mpos++]=buf[cur_pos[r]++];
+            if(cur_pos[r]<rstart[r+1]){CMG_SIFT(0,mhsz);}
+            else{mhsz--;if(mhsz>0){mheap_run[0]=mheap_run[mhsz];CMG_SIFT(0,mhsz);}}
+        }
+        #undef CMG_CMP
+        #undef CMG_SIFT
+    }
+    *head=out[0];
+    for(int i=0;i<n-1;i++) ix->ci[out[i]].next=out[i+1];
+    ix->ci[out[n-1]].next=SENTINEL;
 }
-static void sort_prod_list(Idx *ix,long *head){
-    if(*head==SENTINEL)return;
-    long arr[MAXPRODS];int n=0;long c=*head;
-    while(c!=SENTINEL&&n<MAXPRODS){arr[n++]=c;c=ix->pr[c].next;}
-    for(int i=0;i<n-1;i++)for(int j=0;j<n-1-i;j++)
-        if(icmp(ix->pr[arr[j]].name,ix->pr[arr[j+1]].name)>0){long t=arr[j];arr[j]=arr[j+1];arr[j+1]=t;}
-    *head=arr[0];for(int i=0;i<n-1;i++)ix->pr[arr[i]].next=arr[i+1];ix->pr[arr[n-1]].next=SENTINEL;
+
+static void sort_prod_list(Idx *ix, long *head){
+    if(*head==SENTINEL) return;
+    long inp[MAXPRODS]; int n=0;
+    {long c=*head; while(c!=SENTINEL&&n<MAXPRODS){inp[n++]=c; c=ix->pr[c].next;}}
+    if(n<=1) return;
+    long buf[MAXPRODS]; int buf_pos=0;
+    int rstart[MAXPRODS+1]; int nruns=0;
+    rstart[0]=0; nruns=1;
+    int hs=HEAP_SZ; if(hs>n)hs=n;
+    long heap[HEAP_SZ]; int dead[HEAP_SZ]; int hsz=0,ipos=0;
+    memset(dead,0,sizeof(dead));
+    for(int i=0;i<hs&&ipos<n;i++){heap[i]=inp[ipos++];hsz++;}
+    #define PR_CMP(a,b)(dead[a]!=dead[b]?dead[a]-dead[b]:icmp(ix->pr[heap[a]].name,ix->pr[heap[b]].name))
+    #define PR_SIFT(st,sz){int _p=(st);while(1){int _s=_p,_l=2*_p+1,_r=2*_p+2;\
+        if(_l<(sz)&&PR_CMP(_l,_s)<0)_s=_l; if(_r<(sz)&&PR_CMP(_r,_s)<0)_s=_r;\
+        if(_s==_p)break; long _t=heap[_p];heap[_p]=heap[_s];heap[_s]=_t;\
+        int _d=dead[_p];dead[_p]=dead[_s];dead[_s]=_d;_p=_s;}}
+    for(int i=hsz/2-1;i>=0;i--){PR_SIFT(i,hsz);}
+    char last[MAXC]=""; int alive=hsz;
+    while(hsz>0){
+        if(alive==0 || dead[0]){
+            rstart[nruns++]=buf_pos;
+            for(int i=0;i<hsz;i++)dead[i]=0; alive=hsz; last[0]=0;
+            for(int i=hsz/2-1;i>=0;i--){PR_SIFT(i,hsz);}
+        }
+        buf[buf_pos++]=heap[0]; scpy(last,ix->pr[heap[0]].name,MAXC);
+        if(ipos<n){
+            heap[0]=inp[ipos++]; dead[0]=0;
+            if(icmp(ix->pr[heap[0]].name,last)<0){dead[0]=1;alive--;}
+        } else {
+            hsz--; if(hsz>0){heap[0]=heap[hsz];dead[0]=dead[hsz];} else break;
+        }
+        PR_SIFT(0,hsz);
+    }
+    rstart[nruns]=buf_pos;
+    #undef PR_CMP
+    #undef PR_SIFT
+
+    long out[MAXPRODS];
+    if(nruns==1){
+        for(int i=0;i<n;i++) out[i]=buf[i];
+    } else {
+        int mpos=0; int mheap_run[MAXPRODS]; int cur_pos[MAXPRODS]; int mhsz=0;
+        for(int r=0;r<nruns;r++){cur_pos[r]=rstart[r]; if(rstart[r]<rstart[r+1])mheap_run[mhsz++]=r;}
+        #define PMG_CMP(a,b) icmp(ix->pr[buf[cur_pos[mheap_run[a]]]].name, ix->pr[buf[cur_pos[mheap_run[b]]]].name)
+        #define PMG_SIFT(p,sz) {int _p=(p);while(1){int _s=_p,_l=2*_p+1,_r=2*_p+2;\
+            if(_l<(sz)&&PMG_CMP(_l,_s)<0)_s=_l; if(_r<(sz)&&PMG_CMP(_r,_s)<0)_s=_r;\
+            if(_s==_p)break; int _t=mheap_run[_p];mheap_run[_p]=mheap_run[_s];mheap_run[_s]=_t;_p=_s;}}
+        for(int i=mhsz/2-1;i>=0;i--){PMG_SIFT(i,mhsz);}
+        while(mhsz>0){
+            int r=mheap_run[0]; out[mpos++]=buf[cur_pos[r]++];
+            if(cur_pos[r]<rstart[r+1]){PMG_SIFT(0,mhsz);}
+            else{mhsz--;if(mhsz>0){mheap_run[0]=mheap_run[mhsz];PMG_SIFT(0,mhsz);}}
+        }
+        #undef PMG_CMP
+        #undef PMG_SIFT
+    }
+    *head=out[0];
+    for(int i=0;i<n-1;i++) ix->pr[out[i]].next=out[i+1];
+    ix->pr[out[n-1]].next=SENTINEL;
 }
 static void build_sorted_index(Idx *ix){
     sort_countries(ix);
@@ -382,10 +512,8 @@ static void build_sorted_index(Idx *ix){
     long c=ix->co[i].fcity;while(c!=SENTINEL){sort_prod_list(ix,&ix->ci[c].fprod);c=ix->ci[c].next;}}
 }
 
-/* === SEARCH === */
 static int find_country(Idx *ix,const char *n){for(int i=0;i<ix->nco;i++)if(icmp(ix->co[i].name,n)==0)return i;return-1;}
 static long find_city(Idx *ix,int ci,const char *n){long c=ix->co[ci].fcity;while(c!=SENTINEL){if(icmp(ix->ci[c].name,n)==0)return c;c=ix->ci[c].next;}return SENTINEL;}
-static long find_product(Idx *ix,long ci,const char *n){long p=ix->ci[ci].fprod;while(p!=SENTINEL){if(icmp(ix->pr[p].name,n)==0)return p;p=ix->pr[p].next;}return SENTINEL;}
 
 static void print_record(Record *r){
     printf("  +----------------------------------------------------------+\n");
@@ -406,17 +534,59 @@ static void print_record(Record *r){
 static void do_search(Idx *ix){
     char co[MAXC],ci[MAXC],pr[MAXN];
     printf("Enter country: ");fflush(stdout);fgets(co,MAXC,stdin);co[strcspn(co,"\n")]=0;
-    int coi=find_country(ix,co);if(coi<0){printf("Country '%s' not found.\n",co);return;}
+
+
+    printf("\n[TRACE] Scanning Country index (%d entries)...\n",ix->nco);
+    int coi=-1;
+    for(int i=0;i<ix->nco;i++){
+        printf("[TRACE]   Country[%d] = \"%s\"",i,ix->co[i].name);
+        if(icmp(ix->co[i].name,co)==0){
+            coi=i;
+            printf(" --> MATCH  (fcity=%ld)\n",ix->co[i].fcity);
+            break;
+        }
+        printf("\n");
+    }
+    if(coi<0){printf("Country '%s' not found.\n",co);return;}
+
     printf("Enter city: ");fflush(stdout);fgets(ci,MAXC,stdin);ci[strcspn(ci,"\n")]=0;
-    long cii=find_city(ix,coi,ci);if(cii==SENTINEL){printf("City '%s' not found in %s.\n",ci,co);return;}
+
+
+    printf("\n[TRACE] Following City chain  head_idx=%ld\n",ix->co[coi].fcity);
+    long c=ix->co[coi].fcity; long cii=SENTINEL;
+    while(c!=SENTINEL){
+        printf("[TRACE]   CityIdx[%ld] = \"%s\"  fprod=%ld  next=%ld",
+               c,ix->ci[c].name,ix->ci[c].fprod,ix->ci[c].next);
+        if(icmp(ix->ci[c].name,ci)==0){cii=c;printf(" --> MATCH\n");break;}
+        printf("\n");
+        c=ix->ci[c].next;
+    }
+    if(cii==SENTINEL){printf("City '%s' not found in %s.\n",ci,co);return;}
+
     printf("Enter product: ");fflush(stdout);fgets(pr,MAXN,stdin);pr[strcspn(pr,"\n")]=0;
-    long pi=find_product(ix,cii,pr);if(pi==SENTINEL){printf("Product '%s' not found in %s/%s.\n",pr,co,ci);return;}
+
+
+    printf("\n[TRACE] Following Product chain  head_idx=%ld\n",ix->ci[cii].fprod);
+    long p=ix->ci[cii].fprod; long pi=SENTINEL;
+    while(p!=SENTINEL){
+        printf("[TRACE]   ProdIdx[%ld] = \"%s\"  doff=%ld  next=%ld",
+               p,ix->pr[p].name,ix->pr[p].doff,ix->pr[p].next);
+        if(icmp(ix->pr[p].name,pr)==0){pi=p;printf(" --> MATCH\n");break;}
+        printf("\n");
+        p=ix->pr[p].next;
+    }
+    if(pi==SENTINEL){printf("Product '%s' not found in %s/%s.\n",pr,co,ci);return;}
+
+
+    printf("\n[TRACE] Opening \"%s\", seeking to byte offset=%ld, reading %zu bytes...\n",
+           DATFILE,ix->pr[pi].doff,sizeof(Record));
     FILE *f=fopen(DATFILE,"rb");if(!f){printf("Cannot open data file.\n");return;}
     fseek(f,ix->pr[pi].doff,SEEK_SET);Record r;fread(&r,sizeof(Record),1,f);fclose(f);
-    printf("\n  === Found via: %s -> %s -> %s ===\n",co,ci,pr);print_record(&r);
+    printf("[TRACE] Record read successfully. No full-file scan performed.\n");
+    printf("\n  === Found via: %s -> %s -> %s ===\n",co,ci,pr);
+    print_record(&r);
 }
 
-/* === DISPLAY === */
 static void do_display(Idx *ix){
     printf("\n  === MULTI-LEVEL INDEX ===\n\n");
     for(int i=0;i<ix->nco;i++){printf("  [Country] %s\n",ix->co[i].name);
@@ -431,7 +601,6 @@ static void display_level(Idx *ix){
     else if(ch==3){printf("\n=== PRODUCTS ===\n");for(int i=0;i<ix->nco;i++){long c=ix->co[i].fcity;while(c!=SENTINEL){printf("[%s/%s]\n",ix->co[i].name,ix->ci[c].name);long p=ix->ci[c].fprod;while(p!=SENTINEL){printf("  -> %-20s (idx:%ld doff:%ld next:%ld)\n",ix->pr[p].name,p,ix->pr[p].doff,ix->pr[p].next);p=ix->pr[p].next;}c=ix->ci[c].next;}}}
 }
 
-/* === INSERT === */
 static void do_insert(Idx *ix){
     char co[MAXC],ci[MAXC],pid[MAXPID],nm[MAXN],br[MAXB],cat[MAXCAT],cur[MAXCUR],wh[MAXWH];int pr,st;
     printf("Country: ");fflush(stdout);fgets(co,MAXC,stdin);co[strcspn(co,"\n")]=0;
@@ -461,7 +630,6 @@ static void do_insert(Idx *ix){
     ix->nrec++;printf("Inserted '%s' into %s/%s.\n",nm,co,ci);
 }
 
-/* === REPLACEMENT SELECTION SORT === */
 static void rss_demo(Idx *ix){
     printf("\n=== Replacement Selection Sort (Countries) ===\n\n");
     int n=ix->nco;if(n==0){printf("No data.\n");return;}
@@ -483,7 +651,6 @@ static void rss_demo(Idx *ix){
     printf("--- Run %d ---\n",rn);
     while(hsz>0){
         if(alive==0){printf("\n--- Run %d ---\n",++rn);for(int i=0;i<hsz;i++)dead[i]=0;alive=hsz;last[0]=0;SIFT(hsz);}
-        if(dead[0]){printf("\n--- Run %d ---\n",++rn);for(int i=0;i<hsz;i++)dead[i]=0;alive=hsz;last[0]=0;SIFT(hsz);}
         printf("%s",hp[0]);scpy(last,hp[0],MAXC);
         if(ipos<n){scpy(hp[0],inp[ipos++],MAXC);dead[0]=0;if(icmp(hp[0],last)<0){dead[0]=1;alive--;}}
         else{hsz--;if(hsz>0){memcpy(hp[0],hp[hsz],MAXC);dead[0]=dead[hsz];}else break;}
@@ -496,9 +663,8 @@ static void rss_demo(Idx *ix){
     printf("\n\nDone. %d run(s) generated.\n",rn);
 }
 
-/* === MAIN === */
 int main(void){
-    Idx ix;memset(&ix,0,sizeof(ix));
+    static Idx ix; memset(&ix,0,sizeof(ix));
     printf("=============================================\n");
     printf("  Homework #2 - Multi-Level Indexing System\n");
     printf("  Student: 2023510135\n");
@@ -523,7 +689,13 @@ int main(void){
             case 3:do_insert(&ix);break;case 4:rss_demo(&ix);break;
             case 5:do_display(&ix);break;case 6:run=0;break;
             default:printf("Invalid option.\n");
-        }printf("\n");
+        }
+        if(run){
+            printf("\nPress Enter to return to main menu...");
+            fflush(stdout);
+            getchar();
+        }
+        printf("\n");
     }
     printf("All resources cleaned up. Goodbye!\n");return 0;
 }
